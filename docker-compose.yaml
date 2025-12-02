@@ -1,0 +1,35 @@
+version: "3.9"
+
+services:
+  langgraph_streamlit:
+    container_name: langgraph_streamlit
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: backend
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./app/backend:/app
+      - faiss_data:/app/vectorstore
+    env_file:
+      - .env
+
+  streamlit_app:
+    container_name: streamlit_app
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: streamlit
+    ports:
+      - "8501:8501"
+    volumes:
+      - ./app/streamlit:/app
+    env_file:
+      - .env
+    environment:
+      - BACKEND_URL=http://langgraph_streamlit:8000
+    command: streamlit run main.py --server.port=8501 --server.address=0.0.0.0
+
+volumes:
+  faiss_data:
