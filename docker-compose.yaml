@@ -10,7 +10,7 @@ services:
     ports:
       - "8000:8000"
     volumes:
-      - ./app/backend:/app
+      - ./:/app
       - faiss_data:/app/vectorstore
     env_file:
       - .env

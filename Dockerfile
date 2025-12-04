@@ -13,13 +13,15 @@ FROM base AS backend
 WORKDIR /app
 COPY app/backend/ /app
 
-CMD ["python", "main.py"]
-
+CMD ["uvicorn", "app.backend.main:app", "--host", "0.0.0.0", "--port", "8000"]
 
 # ------------ Streamlit stage ----------
 FROM base AS streamlit
 WORKDIR /app
-COPY app/streamlit/ /app
+
+# Copy entire project (needed because streamlit imports backend)
+COPY . /app
 
 EXPOSE 8501
-CMD ["streamlit", "run", "main.py", "--server.port=8501", "--server.address=0.0.0.0"]
+
+CMD ["streamlit", "run", "app/streamlit/main.py", "--server.port=8501", "--server.address=0.0.0.0"]
