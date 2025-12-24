@@ -10,3 +10,4 @@ class State(TypedDict):
     markdown: str
     structured_docs: List[Document]
     chunks: List[Document]
+    missing_information: Optional[str]

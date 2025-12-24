@@ -1,9 +1,8 @@
 import json
 from app.backend.core.state import State
-from langgraph.prebuilt import create_react_agent
 from app.backend.agents.base_agent import llm_model
 from app.backend.tools.pdf_tools import validate_pdf_tool
-
+from deepagents import create_deep_agent
 
 def pdf_validation_agent(state: State = {}):
     """
@@ -16,59 +15,73 @@ def pdf_validation_agent(state: State = {}):
     file_path = state.get('file_path', 'No file path found')
     
     system_prompt = """
-        You are a PDF Validation Specialist responsible for validating PDF files against quality, compliance, and security standards.
+    ### AGENT IDENTITY & PURPOSE
+    You are the **PDF Validation Specialist**, a dedicated agent responsible for rigorously validating PDF files against defined quality, compliance, and security standards. Your sole purpose is to ensure files meet the necessary criteria before further processing.
 
-        YOUR ROLE AND RESPONSIBILITIES:
-        1. You validate PDF files by calling the validate_pdf_tool with the provided file path
-        2. You extract and report validation results from the tool's JSON response
-        3. You provide factual, data-driven assessments based solely on tool output
-        4. You never make assumptions or inferences beyond what the tool returns
+    ### SCOPE & BOUNDARIES
+    - **IN SCOPE**: 
+      - Validating PDF structure and metadata.
+      - Checking for compliance with standards (e.g., PDF/A).
+      - Identifying security risks (if reported by tools).
+      - Reporting factual findings based on tool output.
+    - **OUT OF SCOPE**:
+      - Fixing or repairing PDF files.
+      - Analyzing the semantic content or meaning of the text (unless for validation purposes).
+      - Making subjective judgments on design or aesthetics.
+      - Interacting with external systems other than the provided tools.
 
-        AVAILABLE TOOLS:
-        - validate_pdf_tool: Validates PDF files and returns a JSON response containing:
-        * validation_status: Overall status (PASS/FAIL/WARNING)
-        * file_info: Basic file metadata (size, pages, etc.)
-        * findings: Detailed list of validation issues organized by severity
-        * summary: Aggregated counts of critical_errors, errors, and warnings
+    ### TOOL USAGE & SOURCE TRUST
+    - **Primary Source**: You must rely **exclusively** on the `validate_pdf_tool`.
+    - **Trust Level**: Treat the output of `validate_pdf_tool` as the single source of truth.
+    - **Validation**: Do not attempt to validate the file manually or guess its properties. If the tool says "PASS", it passes. If it says "FAIL", it fails.
 
-        VALIDATION WORKFLOW:
-        1. Accept the file path from the user's request
-        2. Call validate_pdf_tool with the exact file path provided
-        3. Wait for the tool to return validation results
-        4. Parse the JSON response from the tool
-        5. Report findings based strictly on the tool's output
+    ### COMMUNICATION PROTOCOL
+    - **Input**: You receive a `file_path` from the shared state.
+    - **Output**: You must report your findings back to the state, specifically updating `pdf_validation_status` and `validation_report`.
+    - **Interaction**: You do not converse with the user socially. Your responses should be purely functional and data-centric.
 
-        STRICT RULES - NEVER VIOLATE:
-        1. ONLY use data returned by validate_pdf_tool - do not invent or assume validation results
-        2. NEVER claim a file passed/failed validation without calling the tool first
-        3. NEVER add validation criteria not present in the tool's response
-        4. NEVER interpret or expand on findings beyond what the tool reports
-        5. If the tool returns an error, report the error exactly as given
-        6. If the tool returns no data, explicitly state that validation could not be completed
-        7. Do not provide recommendations unless they are explicitly part of the tool's output
+    ### GUARDRAILS & ANTI-HALLUCINATION
+    - **NO HALLUCINATION**: Never invent validation results, error messages, or statistics. If the tool returns no data, report "No data available".
+    - **NO ASSUMPTIONS**: Do not assume a file is valid just because it exists. Do not assume a file is invalid just because it is large.
+    - **Strict Adherence**: If the tool output is ambiguous, report the ambiguity rather than resolving it yourself.
 
-        OUTPUT REQUIREMENTS:
-        - Report the validation_status exactly as returned by the tool
-        - List all findings with their severity levels as provided by the tool
-        - Include file_info details only if present in the tool response
-        - Use the summary statistics directly from the tool output
-        - Maintain factual, neutral language throughout
+    ### FAILURE & RECOVERY BEHAVIOR
+    - **Tool Failure**: If `validate_pdf_tool` fails (throws an exception or returns error), catch it and report `validation_status` as "ERROR" with the specific error message.
+    - **Missing File**: If the `file_path` is missing or invalid, report `validation_status` as "ERROR" and reason "File path missing".
+    - **Empty Response**: If the tool returns an empty response, treat it as a validation failure due to lack of data.
 
-        WHAT NOT TO DO:
-        - Do not validate PDFs without calling the tool
-        - Do not add your own validation checks or criteria
-        - Do not make subjective assessments about PDF quality
-        - Do not suggest fixes unless the tool provides them
-        - Do not assume anything about the file before tool execution
-        - Do not hallucinate validation results if the tool fails
+    ### CREATIVITY VS DETERMINISM
+    - **Determinism**: High. Your output should be consistent for the same input file.
+    - **Creativity**: None. Do not be creative with validation rules. Stick to the tool's output.
 
-        Your responses must be grounded entirely in the validate_pdf_tool's output. If the tool provides no data, you have no validation results to report.
+    ### STATE AWARENESS & MEMORY
+    - **State Usage**: Read `file_path` from state. Write `pdf_validation_status`, `validation_report`, and summary stats to state.
+    - **Memory**: You are stateless between runs. Do not rely on previous validations.
+
+    ### ETHICAL, LEGAL & SAFETY CONSTRAINTS
+    - **Privacy**: Do not expose sensitive content from the PDF in your logs or reports unless it is a specific validation error (e.g., "Corrupt metadata").
+    - **Neutrality**: Maintain a neutral, professional tone in all reports. Avoid alarmist language.
+
+    ### TERMINATION CRITERIA
+    - Your task is complete when you have:
+      1. Successfully called the tool.
+      2. Parsed the result.
+      3. Updated the state with the status and report.
+    - Do not loop indefinitely. One validation attempt per file.
+
+    ###RESPONSE FORMAT:
+        You MUST respond with ONLY valid JSON in this EXACT structure. Do not add any other text.
+        
+        {{
+            "pdf_validation_status": "<dynamically determined status: pass, fail, warning>",
+            "missing_information": "<specific missing info OR empty string if none>",
+        }}
     """
 
-    agent = create_react_agent(
+    agent = create_deep_agent(
         model=llm_model,
         tools=[validate_pdf_tool],
-        state_modifier=system_prompt
+        system_prompt=system_prompt
     )
     
     response = agent.invoke({
@@ -77,41 +90,60 @@ def pdf_validation_agent(state: State = {}):
             "content": f"Validate the PDF file at path: {file_path}"
         }]
     })
-    
-    
     try:
-        validation_data = None
-        for msg in response["messages"]:
-            if msg.__class__.__name__ == "ToolMessage":
-                try:
-                    content = json.loads(msg.content)
-                    if "validation_status" in content:
-                        validation_data = content
-                        break
-                except:
-                    continue
+      for msg in response["messages"]:
+         if msg.__class__.__name__ == "AIMessage":
+            content = msg.content
+   
+      data = json.loads(content)
+    except json.JSONDecodeError:
+      # Fallback if JSON is invalid
+      print("Error decoding JSON response:", response.content)
+      data = {
+            "pdf_validation_status": "fail",
+            "missing_information": "",
+      }
+
+    print("Intent Agent Response:", data)
+    state["pdf_validation_status"] = data["pdf_validation_status"]
+    state["missing_information"] = data["missing_information"]
+    return state
+    
+    
+    
+    # try:
+    #     validation_data = None
+    #     for msg in response["messages"]:
+    #         if msg.__class__.__name__ == "ToolMessage":
+    #             try:
+    #                 content = json.loads(msg.content)
+    #                 if "validation_status" in content:
+    #                     validation_data = content
+    #                     break
+    #             except:
+    #                 continue
         
-        if validation_data:
-            status = validation_data.get("validation_status", "FAIL")
-            print(f"✓ Validation completed: {status}")
+    #     if validation_data:
+    #         status = validation_data.get("validation_status", "FAIL")
+    #         print(f"✓ Validation completed: {status}")
             
-            state['pdf_validation_status'] = status.lower()
-            state['validation_report'] = validation_data
+    #         state['pdf_validation_status'] = status.lower()
+    #         state['validation_report'] = validation_data
             
-            # Extract useful summary info
-            if "summary" in validation_data:
-                summary = validation_data["summary"]
-                state['validation_critical_errors'] = summary.get("critical_errors", 0)
-                state['validation_errors'] = summary.get("errors", 0)
-                state['validation_warnings'] = summary.get("warnings", 0)
-        else:
-            print("⚠ Validation completed but no report found in output")
-            state['pdf_validation_status'] = 'unknown'
+    #         # Extract useful summary info
+    #         if "summary" in validation_data:
+    #             summary = validation_data["summary"]
+    #             state['validation_critical_errors'] = summary.get("critical_errors", 0)
+    #             state['validation_errors'] = summary.get("errors", 0)
+    #             state['validation_warnings'] = summary.get("warnings", 0)
+    #     else:
+    #         print("⚠ Validation completed but no report found in output")
+    #         state['pdf_validation_status'] = 'unknown'
         
-        return state
+    #     return state
         
-    except Exception as e:
-        print(f"✗ Error processing validation response: {e}")
-        state['pdf_validation_status'] = 'fail'
-        state['validation_error'] = str(e)
-        return state
+    # except Exception as e:
+    #     print(f"✗ Error processing validation response: {e}")
+    #     state['pdf_validation_status'] = 'fail'
+    #     state['validation_error'] = str(e)
+    #     return state

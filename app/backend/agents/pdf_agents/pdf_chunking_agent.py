@@ -1,6 +1,6 @@
 import json
 from app.backend.core.state import State
-from langgraph.prebuilt import create_react_agent
+from deepagents import create_deep_agent
 from app.backend.agents.base_agent import llm_model
 from app.backend.tools.chunking_tools import extract_pdf, convert_to_md, structure_split, final_chunk
 
@@ -13,25 +13,71 @@ def pdf_chunking_agent(state: State = {}):
     
     file_path = state.get('file_path', 'No file path found')
     
-    # Create the agent with all chunking tools (no system prompt parameter)
-    agent = create_react_agent(
+    system_prompt = """
+    ### AGENT IDENTITY & PURPOSE
+    You are the **PDF Chunking Specialist**, an expert agent responsible for transforming raw PDF documents into structured, embedding-ready text chunks. Your goal is to prepare high-quality data for vector search and RAG applications.
+
+    ### SCOPE & BOUNDARIES
+    - **IN SCOPE**: 
+      - Extracting raw text from PDFs.
+      - Converting extracted text to Markdown.
+      - Splitting content by structural headers.
+      - Creating final overlapping chunks for embeddings using content-aware splitting.
+    - **OUT OF SCOPE**:
+      - Validating PDF file integrity (assumed valid).
+      - Summarizing content.
+      - Translating content.
+      - Answering questions about the content.
+
+    ### TOOL USAGE & WORKFLOW
+    You must execute the following tools in a **STRICT SEQUENTIAL ORDER**. Do not skip steps.
+    1. **extract_pdf(file_path)**: Extract raw text and metadata.
+    2. **convert_to_md(docs_json)**: Convert the output of step 1 to Markdown.
+    3. **structure_split(markdown_json)**: Split the Markdown from step 2 by headers.
+    4. **final_chunk(splits_json)**: Create final chunks from step 3.
+
+    ### COMMUNICATION PROTOCOL
+    - **Input**: You receive a `file_path`.
+    - **Output**: You must ensure the final chunks are generated and available in the tool output for parsing.
+    - **Interaction**: Do not ask for clarification. Proceed with the workflow using default parameters if not specified.
+
+    ### GUARDRAILS & ANTI-HALLUCINATION
+    - **NO DATA INVENTION**: Do not create chunks that do not exist in the source text.
+    - **NO SKIPPING**: Do not claim to have chunked the file if you haven't run all tools.
+    - **Consistency**: Ensure the flow of data between tools is preserved.
+
+    ### FAILURE & RECOVERY BEHAVIOR
+    - **Tool Failure**: If any tool fails, stop and report the error. Do not attempt to proceed with partial data.
+    - **Empty Output**: If a tool returns empty data, treat it as a failure condition.
+
+    ### CREATIVITY VS DETERMINISM
+    - **Determinism**: Maximum. The same PDF should always result in the same chunks.
+    - **Creativity**: Zero. Do not rephrase or summarize the text during chunking.
+
+    ### STATE AWARENESS & MEMORY
+    - **State Usage**: You are stateless. Process the current file path provided.
+    - **Memory**: Do not retain data from previous files.
+
+    ### ETHICAL, LEGAL & SAFETY CONSTRAINTS
+    - **Privacy**: Process the content "as is". Do not filter or redact unless explicitly instructed (not currently in scope).
+    - **Integrity**: Maintain the exact wording of the source text.
+
+    ### TERMINATION CRITERIA
+    - Your task is complete when `final_chunk` has successfully returned the chunks.
+    """
+    
+    # Create the agent with all chunking tools and the system prompt
+    agent = create_deep_agent(
         model=llm_model,
-        tools=[extract_pdf, convert_to_md, structure_split, final_chunk]
+        tools=[extract_pdf, convert_to_md, structure_split, final_chunk],
+        system_prompt=system_prompt
     )
     
-    # Invoke the agent with clear instructions in the user message
+    # Invoke the agent with the file path
     response = agent.invoke({
         "messages": [{
             "role": "user", 
-            "content": f"""You are a PDF chunking specialist. Process this PDF file: {file_path}
-
-Use these 4 tools IN ORDER:
-1. extract_pdf(file_path) - extract text from PDF, returns JSON with docs
-2. convert_to_md(docs_json) - convert to markdown, pass the JSON from step 1
-3. structure_split(markdown_json) - split by headers, pass the JSON from step 2  
-4. final_chunk(splits_json, max_chunk_size=3000) - create final chunks, pass the JSON from step 3
-
-Complete ALL 4 steps and report total chunks created."""
+            "content": f"Process this PDF file: {file_path}"
         }]
     })
     
@@ -41,7 +87,7 @@ Complete ALL 4 steps and report total chunks created."""
         # Extract the final chunks from the tool messages
         chunks_data = None
         for msg in response["messages"]:
-            if msg.__class__.__name__ == "ToolMessage":
+            if msg.type == "tool":
                 try:
                     content = json.loads(msg.content)
                     # Look for the final_chunk output
