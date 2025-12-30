@@ -4,7 +4,6 @@ from langchain_text_splitters import MarkdownHeaderTextSplitter, RecursiveCharac
 import json
 import os
 
-@tool
 def extract_pdf(file_path: str) -> str:
     """
     Extracts raw text from a PDF file.
@@ -12,16 +11,17 @@ def extract_pdf(file_path: str) -> str:
     Args:
         file_path (str): The path to the PDF file.
         
-    Returns:
+    Returns:        
         str: JSON string containing the extracted text and metadata.
     """
     try:
+        print(f"Extracting text from PDF: {file_path}")
         loader = PyPDFLoader(file_path)
         pages = loader.load()
         
         # Combine text from all pages
         full_text = "\n\n".join([page.page_content for page in pages])
-        
+        print("✓ PDF text extraction successful", full_text[:100], "...")
         return json.dumps({
             "status": "success",
             "text": full_text,
@@ -31,7 +31,6 @@ def extract_pdf(file_path: str) -> str:
     except Exception as e:
         return json.dumps({"status": "error", "message": str(e)})
 
-@tool
 def convert_to_md(text_json: str) -> str:
     """
     Converts extracted text to Markdown format (heuristic based).
@@ -74,7 +73,6 @@ def convert_to_md(text_json: str) -> str:
     except Exception as e:
         return json.dumps({"status": "error", "message": str(e)})
 
-@tool
 def structure_split(markdown_json: str) -> str:
     """
     Splits markdown text by headers (Content-Based Chunking).
@@ -114,7 +112,6 @@ def structure_split(markdown_json: str) -> str:
     except Exception as e:
         return json.dumps({"status": "error", "message": str(e)})
 
-@tool
 def final_chunk(splits_json: str) -> str:
     """
     Creates final overlapping chunks from structural splits for embedding.

@@ -69,7 +69,7 @@ def pdf_chunking_agent(state: State = {}):
     # Create the agent with all chunking tools and the system prompt
     agent = create_deep_agent(
         model=llm_model,
-        tools=[extract_pdf, convert_to_md, structure_split, final_chunk],
+        tools=[extract_pdf, convert_to_md],
         system_prompt=system_prompt
     )
     
@@ -83,32 +83,32 @@ def pdf_chunking_agent(state: State = {}):
     
     print("CHUNKING AGENT RESPONSE:", response)
     
-    try:
-        # Extract the final chunks from the tool messages
-        chunks_data = None
-        for msg in response["messages"]:
-            if msg.type == "tool":
-                try:
-                    content = json.loads(msg.content)
-                    # Look for the final_chunk output
-                    if "chunks" in content and "total_chunks" in content:
-                        chunks_data = content
-                except:
-                    continue
+    # try:
+    #     # Extract the final chunks from the tool messages
+    #     chunks_data = None
+    #     for msg in response["messages"]:
+    #         if msg.type == "tool":
+    #             try:
+    #                 content = json.loads(msg.content)
+    #                 # Look for the final_chunk output
+    #                 if "chunks" in content and "total_chunks" in content:
+    #                     chunks_data = content
+    #             except:
+    #                 continue
         
-        if chunks_data:
-            print(f"✓ Successfully created {chunks_data['total_chunks']} chunks")
-            state['pdf_chunks'] = chunks_data['chunks']
-            state['chunking_status'] = 'success'
-            state['total_chunks'] = chunks_data['total_chunks']
-        else:
-            print("⚠ Chunking completed but no final chunks found in output")
-            state['chunking_status'] = 'partial'
-        print("state", state)
-        return state
+    #     if chunks_data:
+    #         print(f"✓ Successfully created {chunks_data['total_chunks']} chunks")
+    #         state['pdf_chunks'] = chunks_data['chunks']
+    #         state['chunking_status'] = 'success'
+    #         state['total_chunks'] = chunks_data['total_chunks']
+    #     else:
+    #         print("⚠ Chunking completed but no final chunks found in output")
+    #         state['chunking_status'] = 'partial'
+    #     print("state", state)
+    #     return state
         
-    except Exception as e:
-        print(f"✗ Error processing chunking response: {e}")
-        state['chunking_status'] = 'fail'
-        state['error_message'] = str(e)
-        return state
+    # except Exception as e:
+    #     print(f"✗ Error processing chunking response: {e}")
+    #     state['chunking_status'] = 'fail'
+    #     state['error_message'] = str(e)
+    return state
