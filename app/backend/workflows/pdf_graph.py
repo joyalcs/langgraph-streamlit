@@ -17,5 +17,10 @@ pdf_graph.add_edge("pdf_validation_agent", "pdf_chunking_agent")
 pdf_graph.add_edge("pdf_chunking_agent", END)
 # pdf_graph.add_edge("embedding_agent", END)
 
-# Compile (IMPORTANT)
-pdf_graph = pdf_graph.compile()
+from langgraph.checkpoint.memory import MemorySaver
+
+# ... existing imports ...
+
+# Compile (IMPORTANT) with persistence
+checkpointer = MemorySaver()
+pdf_graph = pdf_graph.compile(checkpointer=checkpointer)

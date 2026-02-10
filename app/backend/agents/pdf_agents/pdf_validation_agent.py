@@ -3,6 +3,8 @@ from app.backend.core.state import State
 from app.backend.agents.base_agent import llm_model
 from app.backend.tools.pdf_tools import validate_pdf_tool
 from deepagents import create_deep_agent
+import openai
+from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type
 
 def pdf_validation_agent(state: State = {}):
     """
@@ -13,7 +15,7 @@ def pdf_validation_agent(state: State = {}):
     print("PDF Validation Agent - File Path:", state.get('file_path', 'No file path found'))
     
     file_path = state.get('file_path', 'No file path found')
-    
+    print("Invoking PDF Validation Agent on file:", file_path)
     system_prompt = """
     ### AGENT IDENTITY & PURPOSE
     You are the **PDF Validation Specialist**, a dedicated agent responsible for rigorously validating PDF files against defined quality, compliance, and security standards. Your sole purpose is to ensure files meet the necessary criteria before further processing.
@@ -84,9 +86,20 @@ def pdf_validation_agent(state: State = {}):
         system_prompt=system_prompt
     )
     
-    response = agent.invoke({
+    # Define retry logic for agent invocation
+    @retry(
+        retry=retry_if_exception_type(openai.RateLimitError),
+        wait=wait_exponential(multiplier=1, min=4, max=60),
+        stop=stop_after_attempt(10),
+        reraise=True
+    )
+    def invoke_with_retry(agent_instance, input_data):
+        print("Invoking validation agent with retry mechanism...")
+        return agent_instance.invoke(input_data)
+
+    response = invoke_with_retry(agent, {
         "messages": [{
-            "role": "user",
+            "role": "user", 
             "content": f"Validate the PDF file at path: {file_path}"
         }]
     })

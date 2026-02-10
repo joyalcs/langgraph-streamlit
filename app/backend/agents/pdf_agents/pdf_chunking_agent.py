@@ -69,9 +69,10 @@ def pdf_chunking_agent(state: State = {}):
     # Create the agent with all chunking tools and the system prompt
     agent = create_deep_agent(
         model=llm_model,
-        tools=[extract_pdf, convert_to_md],
+        tools=[extract_pdf, convert_to_md, structure_split, final_chunk],
         system_prompt=system_prompt
-    )
+    )   
+
     
     # Invoke the agent with the file path
     response = agent.invoke({
@@ -100,6 +101,7 @@ def pdf_chunking_agent(state: State = {}):
         
         if chunks_data:
             print(f"✓ Successfully created {chunks_data['total_chunks']} chunks")
+            print("chunks_data", chunks_data)
             state['pdf_chunks'] = chunks_data['chunks']
             state['chunking_status'] = 'success'
             state['total_chunks'] = chunks_data['total_chunks']
